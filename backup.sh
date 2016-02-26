@@ -84,7 +84,7 @@ fi
 
 # Lock the database
 # Note there is a bug in mongo 2.2.0 where you must touch all the databases before you run mongodump
-mongo --host $MONGODB_INSTANCE admin --eval "var databaseNames = db.getMongo().getDBNames(); rs.slaveOk(); for (var i in databaseNames) { printjson(db.getSiblingDB(databaseNames[i]).getCollectionNames()) }; printjson(db.fsyncLock());"
+mongo --host $MONGODB_INSTANCE admin --eval "rs.slaveOk(); var databaseNames = db.getMongo().getDBNames(); for (var i in databaseNames) { printjson(db.getSiblingDB(databaseNames[i]).getCollectionNames()) }; printjson(db.fsyncLock());"
 
 # Dump the database
 mongodump --host $MONGODB_INSTANCE --out $DIR/backup/$FILE_NAME
