@@ -11,25 +11,29 @@ usage()
 cat << EOF
 usage: $0 options
 
-This script dumps the current mongo database, tars it, then sends it to an Amazon S3 bucket.
+This script dumps the current mongo database, tars it, then sends it to an Amazon S3 bucket
+OR just moves it to local mounted S3 bucket.
 
 OPTIONS:
    -h      Show this message
-   -i      Mongo host
-   -k      AWS Access Key
-   -s      AWS Secret Key
-   -r      Amazon S3 region
-   -b      Amazon S3 bucket name
+   -i      Mongo host (required)
+   -k      AWS Access Key (required if doing upload)
+   -s      AWS Secret Key (required if doing upload)
+   -r      Amazon S3 region (required if doing upload)
+   -b      Amazon S3 bucket name (required if doing upload)
+   -l      Local S3 mount path (required if upload options not provided)
 EOF
 }
 
+USE_LOCAL=
+LOCAL_MOUNTED_BUCKET=
 AWS_ACCESS_KEY=
 AWS_SECRET_KEY=
 S3_REGION=
 S3_BUCKET=
 MONGODB_HOST=
 
-while getopts "ht:k:s:r:b:i:" OPTION
+while getopts "h:k:s:r:b:i:l:" OPTION
 do
   case $OPTION in
     h)
@@ -51,6 +55,9 @@ do
     i)
       MONGODB_HOST=$OPTARG
       ;;
+    l)
+      LOCAL_MOUNTED_BUCKET=$OPTARG
+      ;;
     ?)
       usage
       exit
@@ -58,15 +65,23 @@ do
   esac
 done
 
-if [[ -z $MONGODB_HOST ]] || [[ -z $AWS_ACCESS_KEY ]] || [[ -z $AWS_SECRET_KEY ]] || [[ -z $S3_REGION ]] || [[ -z $S3_BUCKET ]]
+if [[ -z $MONGODB_HOST ]] 
 then
   usage
   exit 1
 fi
+if [[ -z $AWS_ACCESS_KEY ]] || [[ -z $AWS_SECRET_KEY ]] || [[ -z $S3_REGION ]] || [[ -z $S3_BUCKET ]]
+then
+  if [[ -z $LOCAL_MOUNTED_BUCKET ]]
+  then
+    usage
+    exit 1
+  fi
+  USE_LOCAL=true
+fi
 
 # Get the directory the script is being run from
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-echo $DIR
 
 # Store the current date in YYYY-mm-DD-HHMMSS
 DATE=$(date -u "+%F-%H%M%S")
@@ -93,13 +108,18 @@ mongodump --host $MONGODB_INSTANCE --out $DIR/backup/$FILE_NAME
 mongo --host $MONGODB_INSTANCE admin --eval "printjson(db.fsyncUnlock());"
 
 # Tar Gzip the file
-tar -C $DIR/backup/ -zcvf $DIR/backup/$ARCHIVE_NAME $FILE_NAME/
+tar -C $DIR/backup -zcvf $DIR/backup/$ARCHIVE_NAME $FILE_NAME/
 
 # Remove the backup directory
 rm -r $DIR/backup/$FILE_NAME
 
-# Send the file to the backup drive or S3
+if [[ $USE_LOCAL ]]
+then
+  mv $DIR/backup/$ARCHIVE_NAME $LOCAL_MOUNTED_BUCKET
+  exit 0
+fi
 
+# Send the file to the backup drive or S3
 HEADER_DATE=$(date -u "+%a, %d %b %Y %T %z")
 CONTENT_MD5=$(openssl dgst -md5 -binary $DIR/backup/$ARCHIVE_NAME | openssl enc -base64)
 CONTENT_TYPE="application/x-download"
@@ -114,3 +134,5 @@ curl -X PUT \
 --header "Authorization: AWS $AWS_ACCESS_KEY:$SIGNATURE" \
 --upload-file $DIR/backup/$ARCHIVE_NAME \
 https://$S3_BUCKET.s3-$S3_REGION.amazonaws.com/$ARCHIVE_NAME
+
+exit 0

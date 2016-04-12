@@ -17,6 +17,10 @@
 ```
 bash /path/to/backup.sh -i MONGODB_HOST -k AWS_ACCESS_KEY -s AWS_SECRET_KEY -r S3_REGION -b S3_BUCKET
 ```
+OR
+```
+bash /path/to/backup.sh -i MONGODB_HOST -l /path/to/local/bucket/mount
+```
 
 Where `S3_REGION` is in the format `ap-southeast-1`
 
